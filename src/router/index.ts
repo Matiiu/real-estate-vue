@@ -5,9 +5,9 @@ import { useAuthStore } from '@/stores/auth'
 const router = createRouter({
 	history: createWebHistory(import.meta.env.BASE_URL),
 	routes: [
-    {
-      path: '/',
-      component: () => import('@/layout/Home.vue'),
+		{
+			path: '/',
+			component: () => import('@/layout/Home.vue'),
 			children: [
 				{
 					path: '',
@@ -36,11 +36,9 @@ router.beforeEach(async (to, from, next) => {
 	const isUserAuth = await authStore.isUserAuthenticated()
 
 	// If the user is logged in, and they want to go to login redirect to admin
-	if (to.name === 'login') {
-		if (isUserAuth) {
-			next({ name: 'admin' })
-			return
-		}
+	if (to.name === 'login' && isUserAuth) {
+		next({ name: 'admin' })
+		return
 	}
 
 	const isAuthorizationRequired = to.matched.some(
