@@ -1,22 +1,19 @@
 <script lang="ts" setup>
-import { defineAsyncComponent, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { defineAsyncComponent, ref } from 'vue'
 import { useForm, useField } from 'vee-validate'
-import { useLocationMap } from '@/composables/useLocationMap'
-import { LMap, LTileLayer, LMarker } from '@vue-leaflet/vue-leaflet'
-import 'leaflet/dist/leaflet.css'
-import { createProperty } from '@/services/property'
 import { addPropertyValidation as validationSchema } from '@/validations/addProperty'
 import { allowOnlyNumbers } from '@/utils/inputs'
 import { generateToast } from '@/utils/alerts'
 import Heading from '@/ui/Heading.vue'
 import type { NewProperty } from '@/schemas/property'
-
-const UploadImage = defineAsyncComponent(() => import('@/ui/UploadImage.vue'))
+import { useProperties } from '@/composables/useProperties'
 
 const router = useRouter()
+const UploadImage = defineAsyncComponent(() => import('@/ui/UploadImage.vue'))
+const Map = defineAsyncComponent(() => import('@/components/Map.vue'))
+const { loading, createProperty } = useProperties()
 
-const shouldCardLoadiong = ref(false)
 const accountRooms = [1, 2, 3, 4, 5]
 const { handleSubmit } = useForm<NewProperty>({
 	validationSchema,
@@ -37,42 +34,30 @@ const numberParkinLots =
 const description = useField<NewProperty['description']>('description')
 const hasPool = useField<NewProperty['hasPool']>('hasPool')
 const imageId = ref<NewProperty['imageId']>('')
-const { zoom, center, getPin } = useLocationMap()
+const center = ref<NewProperty['location']>([])
 
 const getImageId = imgId => {
 	imageId.value = typeof imgId === 'string' ? imgId : ''
 }
 
 const submit = handleSubmit(async inputValues => {
-	if (!imageId.value) {
-		generateToast('Image is required.', { icon: 'error' })
-		return
-	}
-
-	const payload = {
-		...inputValues,
-		price: Number(inputValues.price),
-		imageId: imageId.value,
-		location: center.value,
-	}
-	shouldCardLoadiong.value = true
 	try {
-		const { error, data: success } = await createProperty(payload)
-
-		if (error) {
-			generateToast(error, { icon: 'error' })
-			return
-		}
-
-		if (success) {
-			generateToast(success)
-		}
+		createProperty({
+			...inputValues,
+			price: Number(inputValues.price),
+			imageId: imageId.value,
+			location: center.value,
+		})
 
 		router.push({ name: 'admin' })
-	} finally {
-		shouldCardLoadiong.value = false
+	} catch (e) {
+		generateToast(e?.message, { icon: 'error' })
 	}
 })
+
+function getLocaltion(location: NewProperty['location']) {
+	center.value = location
+}
 </script>
 
 <template>
@@ -80,7 +65,8 @@ const submit = handleSubmit(async inputValues => {
 		max-width="800"
 		flat
 		class="mx-auto my-10"
-		:loading="shouldCardLoadiong"
+		:loading="loading"
+		:disabled="loading"
 	>
 		<template v-slot:loader="{ isActive }">
 			<ProgressLoader :active="isActive" />
@@ -93,7 +79,7 @@ const submit = handleSubmit(async inputValues => {
 			Create a new property filling out the network form
 		</v-card-subtitle>
 
-		<v-form @submit.prevent="submit" :readonly="shouldCardLoadiong">
+		<v-form @submit.prevent="submit">
 			<fieldset class="d-flex flex-column ga-5 pa-5 rounded">
 				<legend class="text-h4 text-blue-grey-darken-3">Create Property</legend>
 				<v-text-field
@@ -151,20 +137,7 @@ const submit = handleSubmit(async inputValues => {
 
 				<div>
 					<Heading tag="h2">Location</Heading>
-					<LMap
-						style="height: 600px; width: 100%"
-						ref="map"
-						v-model:zoom="zoom"
-						:center="center"
-						:use-global-leaflet="false"
-					>
-						<LMarker :lat-lng="center" draggable @moveend="getPin" />
-						<LTileLayer
-							url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-							layer-type="base"
-							name="OpenStreetMap"
-						/>
-					</LMap>
+					<Map @update:location="getLocaltion" />
 				</div>
 
 				<v-btn type="submit" color="pink-accent-3">

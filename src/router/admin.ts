@@ -23,6 +23,11 @@ const adminRoutes: RouteRecordRaw[] = [
 				name: 'edit-property',
 				component: () => import('@/views/admin/EditProperty.vue'),
 			},
+			{
+				path: 'delete/:id',
+				name: 'delete-property',
+				component: () => import('@/views/admin/DeleteProperty.vue'),
+			},
 		],
 	},
 ]

@@ -5,9 +5,9 @@ import { useAuthStore } from '@/stores/auth'
 const router = createRouter({
 	history: createWebHistory(import.meta.env.BASE_URL),
 	routes: [
-		{
-			path: '/',
-			component: () => import('@/layout/Home.vue'),
+    {
+      path: '/',
+      component: () => import('@/layout/Home.vue'),
 			children: [
 				{
 					path: '',
@@ -18,6 +18,11 @@ const router = createRouter({
 					path: 'login',
 					name: 'login',
 					component: () => import('@/views/Login.vue'),
+				},
+				{
+					path: 'porperty/:id',
+					name: 'property',
+					component: () => import('@/views/property/Overview.vue'),
 				},
 			],
 		},

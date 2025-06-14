@@ -1,49 +1,35 @@
 <script lang="ts" setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, defineAsyncComponent } from 'vue'
+import { useRouter } from 'vue-router'
 import Heading from '@/ui/Heading.vue'
-import { fetchProperties, deletePropertyById } from '@/services/property'
 import { type Property } from '@/schemas/property'
-import { generateToast } from '@/utils/alerts'
 import ProgressLoader from '@/ui/ProgressLoader.vue'
 import ShowImage from '@/ui/ShowImage.vue'
 import { formatCurrency } from '@/utils/inputs'
+import BaseLayout from '@/ui/BaseLayout.vue'
+import { useProperties } from '@/composables/useProperties'
+import { generateConfirmationPopUp } from '@/utils/alerts'
 
-const properties = ref<Property[]>([])
-const mustCardLoading = ref(false)
+const PropertyFilters = defineAsyncComponent(
+	() => import('@/components/property/Filters.vue'),
+)
+
+const router = useRouter()
+const { properties, loading, refreshProperties, searchPropertiesByFilters } =
+	useProperties()
 
 onMounted(() => {
-	loadProperties()
+	refreshProperties()
 })
 
-const loadProperties = async () => {
-	mustCardLoading.value = true
-	try {
-		const { error, data } = await fetchProperties()
+async function handleDeleteConfirmation(property: Property) {
+	const { isConfirmed } = await generateConfirmationPopUp(
+		`Are you sure you want to delete the property ${property.title}?`,
+		{ title: 'Delete Property' },
+	)
 
-		if (error) {
-			generateToast(error, { icon: 'error' })
-		}
-
-		properties.value = data || []
-	} finally {
-		mustCardLoading.value = false
-	}
-}
-
-const handleDeletePropertyById = async (id: Property['id']) => {
-	mustCardLoading.value = true
-	try {
-		const { error, data } = await deletePropertyById(id)
-
-		if (error) {
-			generateToast(error, { icon: 'error' })
-			return
-		}
-
-		generateToast(data)
-		loadProperties()
-	} finally {
-		mustCardLoading.value = false
+	if (isConfirmed) {
+		router.push({ name: 'delete-property', params: { id: property.id } })
 	}
 }
 </script>
@@ -51,17 +37,22 @@ const handleDeletePropertyById = async (id: Property['id']) => {
 <template>
 	<Heading>Admin Panel</Heading>
 
-	<div class="d-flex flex-column ga-6 w-100">
+	<BaseLayout>
 		<div>
 			<v-btn color="blue" variant="flat" :to="{ name: 'new-property' }">
 				<span class="text-white">New Property</span>
 			</v-btn>
 		</div>
 
-		<v-card :loading="mustCardLoading" :disabled="mustCardLoading">
+		<v-card :loading="loading" :disabled="loading">
 			<template v-slot:loader="{ isActive }">
 				<ProgressLoader :active="isActive" />
 			</template>
+
+			<v-card-text>
+				<Heading tag="h4">Search</Heading>
+				<PropertyFilters @search="searchPropertiesByFilters" />
+			</v-card-text>
 
 			<v-list>
 				<template v-if="!!properties.length">
@@ -89,7 +80,7 @@ const handleDeletePropertyById = async (id: Property['id']) => {
 									Edit
 								</v-btn>
 								<v-btn
-									@click="handleDeletePropertyById(property.id)"
+									@click="handleDeleteConfirmation(property)"
 									color="red-darken-3"
 									flat
 								>
@@ -100,7 +91,7 @@ const handleDeletePropertyById = async (id: Property['id']) => {
 					</v-list-item>
 				</template>
 
-				<template v-else-if="!mustCardLoading">
+				<template v-else-if="!loading">
 					<v-list-item
 						class="w-100 d-flex justify-center align-center text-subtitle-1 text-grey-darken-2"
 					>
@@ -109,5 +100,5 @@ const handleDeletePropertyById = async (id: Property['id']) => {
 				</template>
 			</v-list>
 		</v-card>
-	</div>
+	</BaseLayout>
 </template>

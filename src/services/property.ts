@@ -7,40 +7,43 @@ import {
 	doc,
 	setDoc,
 	deleteDoc,
+	query,
+	where,
+	orderBy,
 } from 'firebase/firestore'
 import { firebaseApp } from '@/config/firebase'
 import type { NewProperty, Property } from '@/schemas/property'
 import { FirebaseError } from 'firebase/app'
-import type { PromiseResult } from '@/schemas/result'
+import type { PromiseResult, PromiseSimpleErrorResult } from '@/schemas/result'
 import {
 	newPropertySchema,
 	propertiesSchema,
 	propertySchema,
-	propertyIdSchema,
+	type PropertyFilters,
 } from '@/schemas/property'
+import { normalizeString } from '@/utils/strings'
 
 const db = getFirestore(firebaseApp)
 const docPath = 'properties'
 
 export const createProperty = async (
 	newProperty: NewProperty,
-): PromiseResult<string> => {
+): PromiseSimpleErrorResult => {
 	try {
 		const parsed = newPropertySchema.safeParse(newProperty)
 
 		if (!parsed.success) {
 			const error = parsed.error.issues?.[0]?.message || 'Invalid data.'
-			return {
-				error,
-				data: null,
-			}
+			return { error }
 		}
 
-		await addDoc(collection(db, docPath), parsed.data)
-		return {
-			error: null,
-			data: 'The property was saved successfully.',
+		const dataNormalized = {
+			titleNormalized: normalizeString(parsed.data.title),
+			descirptionNormalized: normalizeString(parsed.data.description),
 		}
+
+		await addDoc(collection(db, docPath), { ...parsed.data, ...dataNormalized })
+		return { error: null }
 	} catch (err) {
 		let error = ''
 
@@ -52,15 +55,13 @@ export const createProperty = async (
 			error = 'An error occurred while trying to save the property.'
 		}
 
-		return {
-			error,
-			data: null,
-		}
+		return { error }
 	}
 }
 
 export const fetchProperties = async (): PromiseResult<Property[]> => {
-	const querySnapshot = await getDocs(collection(db, docPath))
+	const q = query(collection(db, docPath), orderBy('titleNormalized', 'asc'))
+	const querySnapshot = await getDocs(q)
 
 	const properties: unknown[] = []
 	querySnapshot.forEach(docSnap => {
@@ -85,7 +86,8 @@ export const fetchProperties = async (): PromiseResult<Property[]> => {
 export const fetchPropertyById = async (
 	id: Property['id'],
 ): PromiseResult<Property> => {
-	const validateId = propertyIdSchema.safeParse({ id })
+	const validateId = propertySchema.pick({ id: true }).safeParse({ id })
+	console.log('validateId', validateId)
 
 	if (!validateId.success) {
 		return {
@@ -120,25 +122,27 @@ export const fetchPropertyById = async (
 
 export const updateProperty = async (
 	property: Property,
-): PromiseResult<string> => {
+): PromiseSimpleErrorResult => {
 	try {
 		const parsed = propertySchema.safeParse(property)
 
 		if (!parsed.success) {
 			const error = parsed.error.issues?.[0]?.message || 'Invalid data.'
-			return {
-				error,
-				data: null,
-			}
+			return { error }
 		}
 
 		const { id, ...restProperty } = parsed.data
-
-		await setDoc(doc(db, docPath, id), restProperty, { merge: true })
-		return {
-			error: null,
-			data: 'The property was updated successfully.',
+		const dataNormalized = {
+			titleNormalized: normalizeString(parsed.data.title),
+			descirptionNormalized: normalizeString(parsed.data.description),
 		}
+
+		await setDoc(
+			doc(db, docPath, id),
+			{ ...restProperty, ...dataNormalized },
+			{ merge: true },
+		)
+		return { error: null }
 	} catch (err) {
 		let error = ''
 
@@ -150,32 +154,23 @@ export const updateProperty = async (
 			error = 'An error occurred while trying to update the property.'
 		}
 
-		return {
-			error,
-			data: null,
-		}
+		return { error }
 	}
 }
 
 export const deletePropertyById = async (
 	id: Property['id'],
-): PromiseResult<string> => {
-	const validateId = propertyIdSchema.safeParse({ id })
+): PromiseSimpleErrorResult => {
+	const validateId = propertySchema.pick({ id: true }).safeParse({ id })
 
 	if (!validateId.success) {
-		return {
-			error: validateId.error.issues?.[0]?.message || 'Invalid ID.',
-			data: null,
-		}
+		return { error: validateId.error.issues?.[0]?.message || 'Invalid ID.' }
 	}
 
 	try {
 		await deleteDoc(doc(db, docPath, id))
 
-		return {
-			error: null,
-			data: 'Property deleted successfully',
-		}
+		return { error: null }
 	} catch (err) {
 		let error = ''
 
@@ -187,9 +182,59 @@ export const deletePropertyById = async (
 			error = 'An error occurred while trying to delete the property.'
 		}
 
+		return { error }
+	}
+}
+
+export const searchPropertiesByFilters = async (
+	filters: PropertyFilters,
+): PromiseResult<Property[]> => {
+	const q = createQueryFromFilters(filters)
+	const properties: unknown[] = []
+	const querySnapshot = await getDocs(q)
+	querySnapshot.forEach(doc => {
+		properties.push({ ...doc.data(), id: doc.id })
+	})
+
+	const parsed = propertiesSchema.safeParse(properties)
+
+	if (!parsed.success) {
 		return {
-			error,
+			error: parsed.error.issues?.[0]?.message || 'Invalid data.',
 			data: null,
 		}
 	}
+
+	return {
+		error: null,
+		data: parsed.data,
+	}
+}
+
+const createQueryFromFilters = (filters: PropertyFilters) => {
+	const { activeMoreFilters, title, hasPool, priceSort } = filters
+
+	const cleanTitle = normalizeString(title)
+	const propertiesRef = collection(db, docPath)
+	const conditions = [
+		where('titleNormalized', '>=', cleanTitle),
+		where('titleNormalized', '<=', cleanTitle + '\uf8ff'),
+	]
+	const sorts = []
+
+	if (!activeMoreFilters) {
+		return query(propertiesRef, ...conditions)
+	}
+
+	if (hasPool !== null) {
+		conditions.push(where('hasPool', '==', hasPool))
+	}
+
+	if (priceSort) {
+		sorts.push(orderBy('price', priceSort))
+	}
+
+	sorts.push(orderBy('titleNormalized', 'asc'))
+
+	return query(propertiesRef, ...conditions, ...sorts)
 }

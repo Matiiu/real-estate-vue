@@ -12,6 +12,7 @@ import { firebaseApp } from '@/config/firebase'
 import '@mdi/font/css/materialdesignicons.css'
 import VueSweetalert2 from 'vue-sweetalert2'
 import 'sweetalert2/dist/sweetalert2.min.css'
+import vueDebounce from 'vue-debounce'
 
 const app = createApp(App)
 
@@ -32,5 +33,10 @@ app.use(VueFire, {
 })
 // Alerts
 app.use(VueSweetalert2)
+// Debounce
+app.directive(
+	'debounce',
+	vueDebounce({ lock: false, defaultTime: '300ms', trim: true }),
+)
 
 app.mount('#app')
